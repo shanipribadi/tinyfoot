@@ -1,0 +1,8 @@
+*.swp
+firmware/*.hex
+firmware/*.bin
+firmware/*.map
+firmware/*.o
+firmware/*.lst
+firmware/*.srec
+firmware/*.elf
