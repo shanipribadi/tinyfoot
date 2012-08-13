@@ -24,21 +24,31 @@
 
 #define CHECK_BOUNCE 4
 
-uint8_t KeyRaw[CHECK_BOUNCE];
-uint8_t KeyClean;
-uint8_t KeyPressed;
-uint8_t Index;
+/*using PORTB as i/o where PINB0 .. PINB3 is LED and PINB4 .. PINB7 is PBTN*/
+#define MASK_LED 0x0f
+#define MASK_PBTN 0xf0
+
+static uint8_t PortState;
+static volatile uint8_t KeyPressed;
 
 void ioinit(void)
 {
-    DDRD = _BV(5);
-    PORTD = _BV(4);
+    DDRB = MASK_LED;
+    PortState = MASK_PBTN;
+    PORTB = PortState;
 }
 
+// TODO move debounce to ISR
 void debounce(void)
 {
-    uint8_t i, up, dn;
-    KeyRaw[Index] = (~PIND & _BV(4));
+    static uint8_t KeyRaw[CHECK_BOUNCE];
+    static uint8_t KeyClean;
+    static uint8_t up;
+    static uint8_t dn;
+    static uint8_t Index;
+    static uint8_t i;
+
+    KeyRaw[Index] = (~PINB & MASK_PBTN);
     Index++;
     if (Index >= CHECK_BOUNCE)
     {
@@ -54,17 +64,24 @@ void debounce(void)
     }
     _delay_ms(1);
 
-    KeyPressed = ~KeyClean & up;
+    // TODO should this be moved?
+    KeyPressed = ~KeyClean & up & MASK_PBTN; // MASK_PBTN is unneeded?
     KeyClean |= up;
     KeyClean &= dn;
 }
 
 void toggle_led(void)
 {
-    if ((KeyPressed & _BV(4)) == _BV(4))
+    if (KeyPressed == 0x00)
     {
-	PORTD ^= _BV(5);
-	KeyPressed ^= KeyPressed;
+	// Do nothing
+    }
+    else
+    {
+	PortState ^= KeyPressed >> 4; // shift right from pbtn to led.
+	PORTB = PortState;
+	// TODO send PortState to serial port
+	KeyPressed = 0x00;
     }
 }
 
