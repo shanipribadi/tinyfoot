@@ -15,19 +15,19 @@
  *
  * =====================================================================================
  */
-#include <inttypes.h>
+/*#include <inttypes.h>*/
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
-#define F_CPU  1000000UL
+#define F_CPU  8000000UL
 #include <util/delay.h>
 
 #define CHECK_BOUNCE 4
 
 uint8_t KeyRaw[CHECK_BOUNCE];
-uint8_t Index;
 uint8_t KeyClean;
 uint8_t KeyPressed;
+uint8_t Index;
 
 void ioinit(void)
 {
@@ -37,9 +37,13 @@ void ioinit(void)
 
 void debounce(void)
 {
-    static uint8_t i, up, dn;
-    KeyRaw[Index] = PIND & 0x0f;
+    uint8_t i, up, dn;
+    KeyRaw[Index] = (~PIND & _BV(4));
     Index++;
+    if (Index >= CHECK_BOUNCE)
+    {
+	Index = 0;
+    }
 
     up = 0xff;
     dn = 0x00;
@@ -48,15 +52,11 @@ void debounce(void)
 	up &= KeyRaw[i];
 	dn |= KeyRaw[i];
     }
-    if (Index >= CHECK_BOUNCE);
-    {
-	Index = 0;
-    }
+    _delay_ms(1);
 
     KeyPressed = ~KeyClean & up;
     KeyClean |= up;
     KeyClean &= dn;
-    _delay_ms(5);
 }
 
 void toggle_led(void)
@@ -64,7 +64,7 @@ void toggle_led(void)
     if ((KeyPressed & _BV(4)) == _BV(4))
     {
 	PORTD ^= _BV(5);
-	KeyPressed ^= _BV(4);
+	KeyPressed ^= KeyPressed;
     }
 }
 
