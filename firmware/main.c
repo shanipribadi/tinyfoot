@@ -15,12 +15,13 @@
  *
  * =====================================================================================
  */
-/*#include <inttypes.h>*/
+#include <stdint.h>
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
-#define F_CPU  8000000UL
-#include <util/delay.h>
+#define F_CPU  8000000
+#define BAUD 38400
+#include <util/setbaud.h>
 
 #define CHECK_BOUNCE 4
 
@@ -31,15 +32,8 @@
 static uint8_t PortState;
 static volatile uint8_t KeyPressed;
 
-void ioinit(void)
-{
-    DDRB = MASK_LED;
-    PortState = MASK_PBTN;
-    PORTB = PortState;
-}
-
-// TODO move debounce to ISR
-void debounce(void)
+/*Debouncing routine using timer overflow interrupt*/
+ISR(TIMER0_OVF_vect)
 {
     static uint8_t KeyRaw[CHECK_BOUNCE];
     static uint8_t KeyClean;
@@ -62,15 +56,51 @@ void debounce(void)
 	up &= KeyRaw[i];
 	dn |= KeyRaw[i];
     }
-    _delay_ms(1);
 
-    // TODO should this be moved?
+    // TODO should this be moved outside the ISR?
     KeyPressed = ~KeyClean & up & MASK_PBTN; // MASK_PBTN is unneeded?
     KeyClean |= up;
     KeyClean &= dn;
 }
 
-void toggle_led(void)
+static void
+init(void)
+{
+    /*Set IO*/
+    DDRB = MASK_LED;
+    PortState = MASK_PBTN;
+    PORTB = PortState;
+
+    /*Set USART*/
+    UBRRH = UBRRH_VALUE;
+    UBRRL = UBRRL_VALUE;
+    #if USE_2X
+    UCSRA |= _BV(U2X);
+    #else
+    UCSRA &= ~_BV(U2X);
+    #endif
+    UCSRC = _BV(UCSZ1) | _BV(UCSZ0);
+    UCSRB = _BV(TXEN);
+
+    /*Set Overflow Interrupt*/
+    /*clock prescaler 64*/
+    TCCR0B |= _BV(CS01) | _BV(CS00);
+    /*Timer/Counter0 Overflow Interrupt Enable*/
+    TIMSK |= _BV(TOIE0);
+
+    sei();
+}
+
+static int
+uart_putchar(char c)
+{
+    loop_until_bit_is_set(UCSRA, UDRE);
+    UDR = c;
+    return 0;
+}
+
+static void
+key_check(void)
 {
     if (KeyPressed == 0x00)
     {
@@ -78,20 +108,23 @@ void toggle_led(void)
     }
     else
     {
+	cli();
 	PortState ^= KeyPressed >> 4; // shift right from pbtn to led.
 	PORTB = PortState;
-	// TODO send PortState to serial port
+	// TODO send PortState to serial port. Verify if this is working.
+	uart_putchar(PortState);
 	KeyPressed = 0x00;
+	sei();
     }
 }
 
-int main(void)
+int
+main(void)
 {
-    ioinit();
+    init();
     while (1)
     {
-	debounce();
-	toggle_led();
+	key_check();
     }
     return (0);
 }
